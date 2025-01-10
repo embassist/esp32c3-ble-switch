@@ -1,48 +1,24 @@
 use core::convert::TryInto;
-
 use embedded_svc::{
-    http::{
-        Headers,
-        Method,
-    },
-    io::{
-        Read,
-        Write,
-    },
-    wifi::{
-        self,
-        AuthMethod,
-        ClientConfiguration,
-        Configuration,
-    },
+    http::{Headers, Method},
+    io::{Read, Write},
+    wifi::{self, AuthMethod, ClientConfiguration, Configuration},
 };
-
+use esp_idf_hal::gpio::PinDriver;
 use esp_idf_svc::hal::prelude::Peripherals;
 use esp_idf_svc::{
     eventloop::EspSystemEventLoop,
     http::server::EspHttpServer,
     nvs::EspDefaultNvsPartition,
-    wifi::{
-        BlockingWifi,
-        EspWifi,
-    },
+    wifi::{BlockingWifi, EspWifi},
 };
+use std::sync::{Arc, Mutex};
 
 use serde::Deserialize;
 
 const SSID: &str = env!("WIFI_SSID");
 const PASSWORD: &str = env!("WIFI_PASS");
-static INDEX_HTML: &str = include_str!("http_server_page.html");
-
-// Max payload length
-const MAX_LEN: usize = 128;
-
-#[derive(Deserialize)]
-struct FormData<'a> {
-    first_name: &'a str,
-    age: u32,
-    birthplace: &'a str,
-}
+static FAVICON_ICO: &[u8] = include_bytes!("favicon.ico");
 
 fn main() -> ! {
     esp_idf_svc::sys::link_patches();
@@ -60,14 +36,68 @@ fn main() -> ! {
 
     connect(&mut wifi).unwrap();
 
+    let pin = Arc::new(Mutex::new(
+        PinDriver::output(peripherals.pins.gpio4).unwrap(),
+    ));
+
     let mut server = create().unwrap();
 
     server
-        .fn_handler("/", Method::Get, |req| {
-            req.into_ok_response()
+        .fn_handler("/favicon.ico", Method::Get, |req| {
+            req
+                .into_ok_response()
                 .unwrap()
-                .write_all(INDEX_HTML.as_bytes())
-                .map(|_| ())
+                .write_all(FAVICON_ICO)
+        })
+        .unwrap();
+
+    let pinref = Arc::clone(&pin);
+    server
+        .fn_handler("/", Method::Get, move |req| {
+            let mut gpio = pinref.lock().unwrap();
+
+            gpio
+                .toggle()
+                .unwrap();
+
+            let response = if gpio.is_set_low() { "OFF" } else { "ON" };
+
+            req
+                .into_ok_response()
+                .unwrap()
+                .write_all(response.as_bytes())
+        })
+        .unwrap();
+
+    let pinref = Arc::clone(&pin);
+    server
+        .fn_handler("/off", Method::Get, move |req| {
+            pinref
+                .lock()
+                .unwrap()
+                .set_low()
+                .unwrap();
+
+            req
+                .into_ok_response()
+                .unwrap()
+                .write_all("OFF".as_bytes())
+        })
+        .unwrap();
+
+    let pinref = Arc::clone(&pin);
+    server
+        .fn_handler("/on", Method::Get, move |req| {
+            pinref
+                .lock()
+                .unwrap()
+                .set_high()
+                .unwrap();
+
+            req
+                .into_ok_response()
+                .unwrap()
+                .write_all("ON".as_bytes())
         })
         .unwrap();
 
