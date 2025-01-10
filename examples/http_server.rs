@@ -1,9 +1,20 @@
 use core::convert::TryInto;
 
 use embedded_svc::{
-    http::{Headers, Method},
-    io::{Read, Write},
-    wifi::{self, ClientConfiguration, AuthMethod, Configuration},
+    http::{
+        Headers,
+        Method,
+    },
+    io::{
+        Read,
+        Write,
+    },
+    wifi::{
+        self,
+        AuthMethod,
+        ClientConfiguration,
+        Configuration,
+    },
 };
 
 use esp_idf_svc::hal::prelude::Peripherals;
@@ -11,10 +22,11 @@ use esp_idf_svc::{
     eventloop::EspSystemEventLoop,
     http::server::EspHttpServer,
     nvs::EspDefaultNvsPartition,
-    wifi::{BlockingWifi, EspWifi},
+    wifi::{
+        BlockingWifi,
+        EspWifi,
+    },
 };
-
-use log::*;
 
 use serde::Deserialize;
 
@@ -24,12 +36,6 @@ static INDEX_HTML: &str = include_str!("http_server_page.html");
 
 // Max payload length
 const MAX_LEN: usize = 128;
-
-// Need lots of stack to parse JSON
-const STACK_SIZE: usize = 10240;
-
-// Wi-Fi channel, between 1 and 11
-const CHANNEL: u8 = 11;
 
 #[derive(Deserialize)]
 struct FormData<'a> {
@@ -42,8 +48,6 @@ fn main() -> ! {
     esp_idf_svc::sys::link_patches();
     esp_idf_svc::log::EspLogger::initialize_default();
 
-    // Setup Wifi
-
     let peripherals = Peripherals::take().unwrap();
     let sys_loop = EspSystemEventLoop::take().unwrap();
     let nvs = EspDefaultNvsPartition::take().unwrap();
@@ -51,18 +55,21 @@ fn main() -> ! {
     let mut wifi = BlockingWifi::wrap(
         EspWifi::new(peripherals.modem, sys_loop.clone(), Some(nvs)).unwrap(),
         sys_loop,
-    ).unwrap();
+    )
+    .unwrap();
 
     connect(&mut wifi).unwrap();
 
     let mut server = create().unwrap();
 
-    server.fn_handler("/", Method::Get, |req| {
-        req.into_ok_response()
-            .unwrap()
-            .write_all(INDEX_HTML.as_bytes())
-            .map(|_| ())
-    }).unwrap();
+    server
+        .fn_handler("/", Method::Get, |req| {
+            req.into_ok_response()
+                .unwrap()
+                .write_all(INDEX_HTML.as_bytes())
+                .map(|_| ())
+        })
+        .unwrap();
 
     loop {
         std::thread::sleep(core::time::Duration::from_secs(1));
@@ -70,7 +77,7 @@ fn main() -> ! {
 }
 
 fn connect(wifi: &mut BlockingWifi<EspWifi<'static>>) -> anyhow::Result<()> {
-    let wifi_configuration: Configuration = Configuration::Client(ClientConfiguration {
+    let config: Configuration = Configuration::Client(ClientConfiguration {
         ssid: SSID.try_into().unwrap(),
         bssid: None,
         auth_method: AuthMethod::WPA2Personal,
@@ -79,23 +86,23 @@ fn connect(wifi: &mut BlockingWifi<EspWifi<'static>>) -> anyhow::Result<()> {
         ..Default::default()
     });
 
-    wifi.set_configuration(&wifi_configuration)?;
+    wifi.set_configuration(&config)?;
 
     wifi.start()?;
-    info!("Wifi started");
+    log::info!("Wifi started");
 
     wifi.connect()?;
-    info!("Wifi connected");
+    log::info!("Wifi connected");
 
     wifi.wait_netif_up()?;
-    info!("Wifi netif up");
+    log::info!("Wifi netif up");
 
     Ok(())
 }
 
 fn create() -> anyhow::Result<EspHttpServer<'static>> {
     let server_configuration = esp_idf_svc::http::server::Configuration {
-        stack_size: STACK_SIZE,
+        stack_size: 10240usize,
         ..Default::default()
     };
 
