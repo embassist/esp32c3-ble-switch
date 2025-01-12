@@ -1,12 +1,5 @@
-/.idea/
-/.vscode/
-/.espressif/
-/.embuild/
-/target/
-Cargo.lock
-*.lock
+debug/
+target/
 **/*.rs.bk
-/.devcontainer/
-/.github/
-*.md
-LICENSE-*
+*.pdb
+.idea/

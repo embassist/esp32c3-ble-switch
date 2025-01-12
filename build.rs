@@ -1,4 +1,3 @@
 fn main() {
-    embuild::espidf::sysenv::relay();
-    embuild::espidf::sysenv::output(); // Only necessary for building the examples
+    println!("cargo:rustc-link-arg-bins=-Tlinkall.x");
 }

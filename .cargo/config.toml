@@ -1,33 +1,17 @@
-[build]
-target = "riscv32imc-esp-espidf"
-#target = "xtensa-esp32-espidf"
-
-[target.xtensa-esp32-espidf]
-linker = "ldproxy"
-rustflags = ["--cfg", "espidf_time64"]
-
-[target.xtensa-esp32s2-espidf]
-linker = "ldproxy"
-rustflags = ["--cfg", "espidf_time64"]
-
-[target.xtensa-esp32s3-espidf]
-linker = "ldproxy"
-rustflags = ["--cfg", "espidf_time64"]
-
-[target.riscv32imc-esp-espidf]
-linker = "ldproxy"
-rustflags = ["--cfg", "espidf_time64"]
-
-[target.riscv32imac-esp-espidf]
-linker = "ldproxy"
-rustflags = ["--cfg", "espidf_time64"]
+[target.riscv32imc-unknown-none-elf]
+runner = "espflash flash --monitor"
 
 [env]
-ESP_IDF_SDKCONFIG_DEFAULTS = ".github/configs/sdkconfig.defaults"
-ESP_IDF_VERSION = "v5.2.2"
-WIFI_SSID = "Host"
-WIFI_PASS = "unnecessary"
-MCU = "esp32c3"
+ESP_LOG="INFO"
+
+[build]
+rustflags = [
+  # Required to obtain backtraces (e.g. when using the "esp-backtrace" crate.)
+  # NOTE: May negatively impact performance of produced code
+  "-C", "force-frame-pointers",
+]
+
+target = "riscv32imc-unknown-none-elf"
 
 [unstable]
-build-std = ["std", "panic_abort"]
+build-std = ["alloc", "core"]
