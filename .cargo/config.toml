@@ -2,6 +2,8 @@
 runner = "espflash flash --monitor"
 
 [env]
+ESP_WIFI_COUNTRY_CODE="FI"
+ESP_WIFI_COUNTRY_CODE_OPERATING_CLASS="246"
 ESP_LOG="INFO"
 
 [build]

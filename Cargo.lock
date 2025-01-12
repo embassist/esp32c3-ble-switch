@@ -715,6 +715,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "esp32c3-ble-switch"
+version = "0.1.0"
+dependencies = [
+ "bleps",
+ "embassy-executor",
+ "embassy-net",
+ "esp-alloc",
+ "esp-backtrace",
+ "esp-hal",
+ "esp-hal-embassy",
+ "esp-println",
+ "esp-wifi",
+ "static_cell",
+]
+
+[[package]]
 name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1364,29 +1380,6 @@ name = "uuid"
 version = "1.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b913a3b5fe84142e269d63cc62b64319ccaf89b748fc31fe025177f767a756c4"
-
-[[package]]
-name = "v7"
-version = "0.1.0"
-dependencies = [
- "bleps",
- "critical-section",
- "embassy-executor",
- "embassy-net",
- "embassy-time",
- "embedded-io",
- "embedded-io-async",
- "esp-alloc",
- "esp-backtrace",
- "esp-hal",
- "esp-hal-embassy",
- "esp-println",
- "esp-wifi",
- "heapless",
- "log",
- "smoltcp",
- "static_cell",
-]
 
 [[package]]
 name = "vcell"

@@ -1,47 +1,160 @@
+//! Embassy BLE Example
+//!
+//! - starts Bluetooth advertising
+//! - offers one service with three characteristics (one is read/write, one is write only, one is read/write/notify)
+//! - pressing the boot-button on a dev-board will send a notification if it is subscribed
+
+//% FEATURES: embassy embassy-generic-timers esp-wifi esp-wifi/ble esp-hal/unstable
+//% CHIPS: esp32 esp32s3 esp32c2 esp32c3 esp32c6 esp32h2
+
 #![no_std]
 #![no_main]
 
+use core::cell::RefCell;
+
+use bleps::{
+    ad_structure::{
+        create_advertising_data,
+        AdStructure,
+        BR_EDR_NOT_SUPPORTED,
+        LE_GENERAL_DISCOVERABLE,
+    },
+    async_attribute_server::AttributeServer,
+    asynch::Ble,
+    attribute_server::NotificationData,
+    gatt,
+};
 use embassy_executor::Spawner;
-use embassy_time::{Duration, Timer};
+use esp_alloc as _;
 use esp_backtrace as _;
-use esp_hal::prelude::*;
-use log::info;
+use esp_hal::{
+    clock::CpuClock,
+    gpio::{Input, Pull},
+    rng::Rng,
+    time,
+    timer::timg::TimerGroup,
+};
+use esp_println::println;
+use esp_wifi::{ble::controller::BleConnector, init, EspWifiController};
 
-extern crate alloc;
+// When you are okay with using a nightly compiler it's better to use https://docs.rs/static_cell/2.1.0/static_cell/macro.make_static.html
+macro_rules! mk_static {
+    ($t:ty,$val:expr) => {{
+        static STATIC_CELL: static_cell::StaticCell<$t> = static_cell::StaticCell::new();
+        #[deny(unused_attributes)]
+        let x = STATIC_CELL.uninit().write(($val));
+        x
+    }};
+}
 
-#[main]
-async fn main(spawner: Spawner) {
-    let peripherals = esp_hal::init({
-        let mut config = esp_hal::Config::default();
-        config.cpu_clock = CpuClock::max();
-        config
-    });
+#[esp_hal_embassy::main]
+async fn main(_spawner: Spawner) -> ! {
+    esp_println::logger::init_logger_from_env();
+    let config = esp_hal::Config::default();
+    let peripherals = esp_hal::init(config);
 
     esp_alloc::heap_allocator!(72 * 1024);
 
-    esp_println::logger::init_logger_from_env();
+    let timg0 = TimerGroup::new(peripherals.TIMG0);
 
-    let timer0 = esp_hal::timer::systimer::SystemTimer::new(peripherals.SYSTIMER)
-        .split::<esp_hal::timer::systimer::Target>();
-    esp_hal_embassy::init(timer0.alarm0);
+    let init = &*mk_static!(
+        EspWifiController<'static>,
+        init(
+            timg0.timer0,
+            Rng::new(peripherals.RNG),
+            peripherals.RADIO_CLK,
+        )
+        .unwrap()
+    );
 
-    info!("Embassy initialized!");
+    let mut bluetooth = peripherals.BT;
 
-    let timer1 = esp_hal::timer::timg::TimerGroup::new(peripherals.TIMG0);
-    let _init = esp_wifi::init(
-        timer1.timer0,
-        esp_hal::rng::Rng::new(peripherals.RNG),
-        peripherals.RADIO_CLK,
-    )
-    .unwrap();
+    let connector = BleConnector::new(&init, &mut bluetooth);
 
-    // TODO: Spawn some tasks
-    let _ = spawner;
+    let now = || time::now().duration_since_epoch().to_millis();
+    let mut ble = Ble::new(connector, now);
+    println!("Connector created");
 
     loop {
-        info!("Hello world!");
-        Timer::after(Duration::from_secs(1)).await;
-    }
+        println!("{:?}", ble.init().await);
+        println!("{:?}", ble.cmd_set_le_advertising_parameters().await);
+        println!(
+            "{:?}",
+            ble.cmd_set_le_advertising_data(
+                create_advertising_data(&[
+                    AdStructure::Flags(LE_GENERAL_DISCOVERABLE | BR_EDR_NOT_SUPPORTED),
+                    AdStructure::ServiceUuids16(&[Uuid::Uuid16(0x1809)]),
+                    AdStructure::CompleteLocalName(esp_hal::chip!()),
+                ])
+                    .unwrap()
+            )
+                .await
+        );
+        println!("{:?}", ble.cmd_set_le_advertise_enable(true).await);
 
-    // for inspiration have a look at the examples at https://github.com/esp-rs/esp-hal/tree/v0.22.0/examples/src/bin
+        println!("started advertising");
+
+        let mut rf = |_offset: usize, data: &mut [u8]| {
+            data[..20].copy_from_slice(&b"Hello Bare-Metal BLE"[..]);
+            17
+        };
+        let mut wf = |offset: usize, data: &[u8]| {
+            println!("RECEIVED: {} {:?}", offset, data);
+        };
+
+        let mut wf2 = |offset: usize, data: &[u8]| {
+            println!("RECEIVED: {} {:?}", offset, data);
+        };
+
+        let mut rf3 = |_offset: usize, data: &mut [u8]| {
+            data[..5].copy_from_slice(&b"Hola!"[..]);
+            5
+        };
+        let mut wf3 = |offset: usize, data: &[u8]| {
+            println!("RECEIVED: Offset {}, data {:?}", offset, data);
+        };
+
+        gatt!([service {
+            uuid: "937312e0-2354-11eb-9f10-fbc30a62cf38",
+            characteristics: [
+                characteristic {
+                    uuid: "937312e0-2354-11eb-9f10-fbc30a62cf38",
+                    read: rf,
+                    write: wf,
+                },
+                characteristic {
+                    uuid: "957312e0-2354-11eb-9f10-fbc30a62cf38",
+                    write: wf2,
+                },
+                characteristic {
+                    name: "my_characteristic",
+                    uuid: "987312e0-2354-11eb-9f10-fbc30a62cf38",
+                    notify: true,
+                    read: rf3,
+                    write: wf3,
+                },
+            ],
+        },]);
+
+        let mut rng = bleps::no_rng::NoRng;
+        let mut srv = AttributeServer::new(&mut ble, &mut gatt_attributes, &mut rng);
+
+        let counter = RefCell::new(0u8);
+        let counter = &counter;
+
+        let mut notifier = || {
+            async {
+                let mut data = [0u8; 13];
+                data.copy_from_slice(b"Notification0");
+                {
+                    let mut counter = counter.borrow_mut();
+                    data[data.len() - 1] += *counter;
+                    *counter = (*counter + 1) % 10;
+                }
+                NotificationData::new(my_characteristic_handle, &data)
+            }
+        };
+
+        srv.run(&mut notifier).await.unwrap();
+    }
 }
