@@ -38,8 +38,14 @@ use esp_wifi::{ble::controller::BleConnector, init};
 #[entry]
 fn main() -> ! {
     esp_println::logger::init_logger_from_env();
-    let config = esp_hal::Config::default();
-    let peripherals = esp_hal::init(config);
+    // let config = esp_hal::Config::default();
+    // let peripherals = esp_hal::init(config);
+
+    let peripherals = esp_hal::init({
+        let mut config = esp_hal::Config::default();
+        config.cpu_clock = CpuClock::max();
+        config
+    });
 
     esp_alloc::heap_allocator!(72 * 1024);
 
@@ -51,6 +57,7 @@ fn main() -> ! {
         peripherals.RADIO_CLK,
     )
         .unwrap();
+
 
     let mut debounce_cnt = 500;
 
