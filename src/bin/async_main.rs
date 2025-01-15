@@ -1,16 +1,8 @@
-//! BLE Example
-//!
-//! - starts Bluetooth advertising
-//! - offers one service with three characteristics (one is read/write, one is write only, one is read/write/notify)
-//! - pressing the boot-button on a dev-board will send a notification if it is subscribed
-
-//% FEATURES: esp-wifi esp-wifi/ble esp-hal/unstable
-//% CHIPS: esp32 esp32s3 esp32c2 esp32c3 esp32c6 esp32h2
-
 #![no_std]
 #![no_main]
 
 use bleps::{
+    att::Uuid,
     ad_structure::{
         create_advertising_data,
         AdStructure,
@@ -38,8 +30,6 @@ use esp_wifi::{ble::controller::BleConnector, init};
 #[entry]
 fn main() -> ! {
     esp_println::logger::init_logger_from_env();
-    // let config = esp_hal::Config::default();
-    // let peripherals = esp_hal::init(config);
 
     let peripherals = esp_hal::init({
         let mut config = esp_hal::Config::default();
