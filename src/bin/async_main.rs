@@ -58,7 +58,7 @@ fn main() -> ! {
     )
         .unwrap();
 
-
+    let button = Input::new(peripherals.GPIO9, Pull::Down);
     let mut debounce_cnt = 500;
 
     let mut bluetooth = peripherals.BT;
@@ -134,8 +134,9 @@ fn main() -> ! {
         loop {
             let mut notification = None;
 
-            if true {
-            // if button.is_low() && debounce_cnt > 0 {
+            println!("{}", button.is_low());
+
+            if button.is_low() && debounce_cnt > 0 {
                 debounce_cnt -= 1;
                 if debounce_cnt == 0 {
                     let mut cccd = [0u8; 1];
@@ -155,8 +156,7 @@ fn main() -> ! {
                 }
             };
 
-            if false {
-            // if button.is_high() {
+            if button.is_high() {
                 debounce_cnt = 500;
             }
 
