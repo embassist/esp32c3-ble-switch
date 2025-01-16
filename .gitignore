@@ -1,5 +1,6 @@
+.idea/
 debug/
+Cargo.lock
 target/
 **/*.rs.bk
 *.pdb
-.idea/

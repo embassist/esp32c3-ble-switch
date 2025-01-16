@@ -1,29 +1,29 @@
 #![no_std]
 #![no_main]
+extern crate alloc;
 
+use alloc::string::ToString;
+use alloc::task::Arc;
 use bleps::{
-    att::Uuid,
     ad_structure::{
-        create_advertising_data,
-        AdStructure,
-        BR_EDR_NOT_SUPPORTED,
-        LE_GENERAL_DISCOVERABLE,
+        create_advertising_data, AdStructure, BR_EDR_NOT_SUPPORTED, LE_GENERAL_DISCOVERABLE,
     },
+    att::Uuid,
     attribute_server::{AttributeServer, NotificationData, WorkResult},
-    gatt,
-    Ble,
-    HciConnector,
+    gatt, Ble, HciConnector,
 };
 use esp_alloc as _;
 use esp_backtrace as _;
 use esp_hal::{
     clock::CpuClock,
     entry,
-    gpio::{Input, Pull},
+    gpio::{Input, Level, Output, Pull},
     rng::Rng,
     time,
     timer::timg::TimerGroup,
 };
+use esp_hal::riscv::_export::critical_section::Mutex;
+use esp_hal::riscv::register::marchid::Marchid;
 use esp_println::println;
 use esp_wifi::{ble::controller::BleConnector, init};
 
@@ -46,12 +46,13 @@ fn main() -> ! {
         Rng::new(peripherals.RNG),
         peripherals.RADIO_CLK,
     )
-        .unwrap();
+    .unwrap();
 
     let button = Input::new(peripherals.GPIO9, Pull::Down);
     let mut debounce_cnt = 500;
 
     let mut bluetooth = peripherals.BT;
+    let mut pin4 = Output::new(peripherals.GPIO4, Level::Low);
 
     let now = || time::now().duration_since_epoch().to_millis();
     loop {
@@ -59,72 +60,60 @@ fn main() -> ! {
         let hci = HciConnector::new(connector, now);
         let mut ble = Ble::new(&hci);
 
-        println!("{:?}", ble.init());
-        println!("{:?}", ble.cmd_set_le_advertising_parameters());
+        println!("[BLE] Init: {:?}", ble.init());
         println!(
-            "{:?}",
+            "[BLE] Params: {:?}",
+            ble.cmd_set_le_advertising_parameters()
+        );
+        println!(
+            "[BLE] Data: {:?}",
             ble.cmd_set_le_advertising_data(
                 create_advertising_data(&[
                     AdStructure::Flags(LE_GENERAL_DISCOVERABLE | BR_EDR_NOT_SUPPORTED),
                     AdStructure::ServiceUuids16(&[Uuid::Uuid16(0x1809)]),
                     AdStructure::CompleteLocalName(esp_hal::chip!()),
                 ])
-                    .unwrap()
+                .unwrap()
             )
         );
-        println!("{:?}", ble.cmd_set_le_advertise_enable(true));
+        println!("[BLE] Enabled: {:?}", ble.cmd_set_le_advertise_enable(true));
 
-        println!("started advertising");
+        println!("[BLE] Started.");
 
-        let mut rf = |_offset: usize, data: &mut [u8]| {
-            data[..20].copy_from_slice(&b"Hello Bare-Metal BLE"[..]);
-            17
+        let mut reader = move |_offset: usize, data: &mut [u8]| {
+            data[..1].copy_from_slice(&(pin4
+                .is_set_high()
+                as u8)
+                .to_string()
+                .as_bytes()
+            );
+            1
         };
-        let mut wf = |offset: usize, data: &[u8]| {
-            println!("RECEIVED: {} {:?}", offset, data);
-        };
-
-        let mut wf2 = |offset: usize, data: &[u8]| {
-            println!("RECEIVED: {} {:?}", offset, data);
-        };
-
-        let mut rf3 = |_offset: usize, data: &mut [u8]| {
-            data[..5].copy_from_slice(&b"Hola!"[..]);
-            5
-        };
-        let mut wf3 = |offset: usize, data: &[u8]| {
+        let mut writer = |offset: usize, data: &[u8]| {
+            if pin4.is_set_high() {
+                pin4.set_low();
+            } else {
+                pin4.set_high();
+            }
             println!("RECEIVED: Offset {}, data {:?}", offset, data);
         };
 
         gatt!([service {
             uuid: "937312e0-2354-11eb-9f10-fbc30a62cf38",
-            characteristics: [
-                characteristic {
-                    uuid: "937312e0-2354-11eb-9f10-fbc30a62cf38",
-                    read: rf,
-                    write: wf,
-                },
-                characteristic {
-                    uuid: "957312e0-2354-11eb-9f10-fbc30a62cf38",
-                    write: wf2,
-                },
-                characteristic {
-                    name: "my_characteristic",
-                    uuid: "987312e0-2354-11eb-9f10-fbc30a62cf38",
-                    notify: true,
-                    read: rf3,
-                    write: wf3,
-                },
-            ],
-        },]);
+            characteristics: [characteristic {
+                name: "my_characteristic",
+                uuid: "240d5183-819a-4627-9ca9-1aa24df29f18",
+                notify: true,
+                read: reader,
+                write: writer,
+            },],
+        }]);
 
         let mut rng = bleps::no_rng::NoRng;
         let mut srv = AttributeServer::new(&mut ble, &mut gatt_attributes, &mut rng);
 
         loop {
             let mut notification = None;
-
-            println!("{}", button.is_low());
 
             if button.is_low() && debounce_cnt > 0 {
                 debounce_cnt -= 1;
@@ -157,7 +146,7 @@ fn main() -> ! {
                     }
                 }
                 Err(err) => {
-                    println!("{:?}", err);
+                    println!("[BLE] Notifications failture, since: {:?}", err);
                 }
             }
         }
