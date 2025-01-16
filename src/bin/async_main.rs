@@ -2,8 +2,6 @@
 #![no_main]
 extern crate alloc;
 
-use alloc::string::ToString;
-use alloc::task::Arc;
 use bleps::{
     ad_structure::{
         create_advertising_data, AdStructure, BR_EDR_NOT_SUPPORTED, LE_GENERAL_DISCOVERABLE,
@@ -22,8 +20,6 @@ use esp_hal::{
     time,
     timer::timg::TimerGroup,
 };
-use esp_hal::riscv::_export::critical_section::Mutex;
-use esp_hal::riscv::register::marchid::Marchid;
 use esp_println::println;
 use esp_wifi::{ble::controller::BleConnector, init};
 
@@ -80,21 +76,9 @@ fn main() -> ! {
 
         println!("[BLE] Started.");
 
-        let mut reader = move |_offset: usize, data: &mut [u8]| {
-            data[..1].copy_from_slice(&(pin4
-                .is_set_high()
-                as u8)
-                .to_string()
-                .as_bytes()
-            );
-            1
-        };
         let mut writer = |offset: usize, data: &[u8]| {
-            if pin4.is_set_high() {
-                pin4.set_low();
-            } else {
-                pin4.set_high();
-            }
+            pin4.toggle();
+            println!("{}", pin4.is_set_high());
             println!("RECEIVED: Offset {}, data {:?}", offset, data);
         };
 
@@ -104,7 +88,6 @@ fn main() -> ! {
                 name: "my_characteristic",
                 uuid: "240d5183-819a-4627-9ca9-1aa24df29f18",
                 notify: true,
-                read: reader,
                 write: writer,
             },],
         }]);
